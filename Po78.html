@@ -1,0 +1,2301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Print Sheet — photo print layout maker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation"></script>
+<style>
+  :root{
+    --paper:#f6f3ec;
+    --paper-deep:#efeade;
+    --ink:#201d18;
+    --ink-soft:#5c584f;
+    --line:#d9d3c2;
+    --red:#b3392c;
+    --blue:#1f3a63;
+    --white:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Mono', monospace;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:60px;
+  }
+  h1,h2,h3{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    margin:0;
+  }
+  .topbar{
+    position:relative;
+    padding:22px 18px 18px;
+    border-bottom:2px solid var(--ink);
+    background:var(--paper);
+  }
+  .topbar::before, .topbar::after{
+    content:"+";
+    position:absolute;
+    top:8px;
+    color:var(--red);
+    font-size:14px;
+    line-height:1;
+  }
+  .topbar::before{left:8px;}
+  .topbar::after{right:8px;}
+  .topbar h1{font-size:22px;letter-spacing:.2px;}
+  .topbar p{margin:4px 0 0;font-size:12px;color:var(--ink-soft);}
+  .developer-credit{
+    margin-top:10px;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+  }
+  .developer-credit .wa-link{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:22px;
+    height:22px;
+    border-radius:50%;
+    background:#25D366;
+    color:#fff;
+    text-decoration:none;
+    font-family:Arial,sans-serif;
+    font-size:11px;
+    font-weight:700;
+    line-height:1;
+  }
+  .developer-credit .wa-link:hover{opacity:.9;transform:scale(1.06);}
+  @media (max-width:420px){
+    .topbar{padding:20px 14px 16px;}
+    .developer-credit{font-size:9.5px;}
+  }
+
+  main{max-width:760px;margin:0 auto;padding:16px;}
+
+  .card{
+    background:var(--white);
+    border:1px solid var(--line);
+    border-radius:2px;
+    padding:16px;
+    margin-bottom:16px;
+    position:relative;
+  }
+  .card > .tag{
+    font-size:10px;
+    color:var(--ink-soft);
+    letter-spacing:.4px;
+    display:block;
+    margin-bottom:10px;
+    border-bottom:1px dotted var(--line);
+    padding-bottom:8px;
+  }
+
+  /* upload */
+  .drop{
+    border:1.5px dashed var(--ink-soft);
+    border-radius:2px;
+    padding:22px 14px;
+    text-align:center;
+    cursor:pointer;
+    transition:background .15s ease, border-color .15s ease;
+  }
+  .drop:hover, .drop.drag{
+    background:var(--paper-deep);
+    border-color:var(--red);
+  }
+  .drop input{display:none;}
+  .drop .big{font-family:'Fraunces',serif;font-size:16px;font-weight:600;}
+  .drop .small{font-size:11px;color:var(--ink-soft);margin-top:4px;}
+
+  /* preview row */
+  .preview-row{
+    display:flex;
+    gap:16px;
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+  .preview-box{
+    width:150px;
+    flex-shrink:0;
+  }
+  .preview-frame{
+    border:1px solid var(--ink);
+    background:repeating-conic-gradient(#eee 0% 25%, #fafafa 0% 50%) 50% / 14px 14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    aspect-ratio:3/4;
+  }
+  .preview-frame canvas{max-width:100%;max-height:100%;display:block;}
+  .preview-box .cap{font-size:10px;color:var(--ink-soft);margin-top:6px;text-align:center;}
+  .fields{flex:1;min-width:220px;}
+
+  /* field rows: label ... dotted leader ... control */
+  .row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .row label{
+    font-size:11px;
+    color:var(--ink-soft);
+    white-space:nowrap;
+  }
+  .leader{
+    flex:1;
+    border-bottom:1px dotted var(--line);
+    height:1px;
+    margin:0 2px;
+    min-width:8px;
+  }
+  input[type=number], select, input[type=text]{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    border:1px solid var(--ink);
+    background:var(--white);
+    padding:6px 8px;
+    border-radius:2px;
+    color:var(--ink);
+    width:78px;
+  }
+  select{width:auto;}
+  .row.wide input, .row.wide select{width:auto;}
+  input[type=range]{
+    accent-color:var(--red);
+    flex:1;
+  }
+  .btn{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    border:1px solid var(--ink);
+    background:var(--white);
+    padding:8px 12px;
+    border-radius:2px;
+    cursor:pointer;
+    color:var(--ink);
+  }
+  .btn:hover{background:var(--paper-deep);}
+  .btn.on{background:var(--ink);color:var(--white);}
+  .btn.primary{
+    background:var(--red);
+    border-color:var(--red);
+    color:var(--white);
+    font-weight:600;
+  }
+  .btn.primary:hover{background:#96271c;}
+  .btn.block{width:100%;padding:12px;text-align:center;font-size:13px;}
+  .btn[disabled]{opacity:.4;cursor:not-allowed;}
+
+  .segrow{display:flex;gap:6px;flex-wrap:wrap;}
+
+  .dims{display:flex;align-items:center;gap:8px;}
+  .link-toggle{
+    font-size:10px;
+    padding:4px 6px;
+    border:1px solid var(--ink-soft);
+    background:var(--paper);
+    border-radius:2px;
+    cursor:pointer;
+    color:var(--ink-soft);
+  }
+  .link-toggle.on{border-color:var(--red);color:var(--red);}
+
+  .hint{font-size:10.5px;color:var(--ink-soft);margin-top:2px;line-height:1.4;}
+
+  /* @@ANCHOR[css-photo-list] multi-photo thumbnails */
+  .photo-list{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+  .photo-item{
+    width:96px;border:1px solid var(--line);background:var(--white);
+    position:relative;padding:4px;cursor:pointer;
+  }
+  .photo-item.active{border-color:var(--red);box-shadow:0 0 0 1px var(--red);}
+  .photo-item img{width:100%;height:84px;object-fit:cover;display:block;background:var(--paper-deep);}
+  .photo-item .rm{
+    position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;
+    border:2px solid #fff;background:var(--red);color:#fff;font-size:13px;line-height:1;
+    cursor:pointer;padding:0;
+  }
+  .photo-item .cp{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink-soft);margin-top:4px;}
+  .photo-item .cp input{width:100%;min-width:0;padding:2px 4px;font-size:11px;}
+
+  /* @@ANCHOR[css-a4-preview] A4 preview */
+  .a4wrap{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:12px;
+    padding:10px 0 10px;
+    background:var(--paper-deep);
+    border:1px solid var(--line);
+  }
+  .a4page{
+    background:#fff;
+    box-shadow:0 2px 10px rgba(0,0,0,.15);
+  }
+  .meta{
+    display:flex;
+    justify-content:space-between;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    margin-top:8px;
+  }
+  .meta .warn{color:var(--red);}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;}
+  @media (min-width:560px){
+    .grid2{grid-template-columns:1fr 1fr 1fr;}
+  }
+  .fieldstack label{display:block;font-size:11px;color:var(--ink-soft);margin-bottom:4px;}
+  .fieldstack input, .fieldstack select{width:100%;}
+
+  footer{
+    text-align:center;
+    font-size:10px;
+    color:var(--ink-soft);
+    padding:20px 16px;
+  }
+
+  /* crop modal */
+  .crop-modal{
+    position:fixed;
+    inset:0;
+    background:rgba(20,18,14,.7);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    z-index:1000;
+  }
+  .crop-panel{
+    background:var(--white);
+    border:1px solid var(--ink);
+    border-radius:2px;
+    padding:14px;
+    width:100%;
+    max-width:380px;
+  }
+  .crop-stage{
+    position:relative;
+    margin:0 auto;
+    background:#111;
+    overflow:hidden;
+    touch-action:none;
+    user-select:none;
+  }
+  .crop-stage img{
+    display:block;
+    width:100%;
+    height:100%;
+    pointer-events:none;
+    user-select:none;
+  }
+  .crop-box{
+    position:absolute;
+    border:2px solid var(--red);
+    box-shadow:0 0 0 2000px rgba(0,0,0,.55);
+    cursor:move;
+    touch-action:none;
+  }
+  .crop-handle{
+    position:absolute;
+    width:18px;
+    height:18px;
+    background:var(--red);
+    border:2px solid #fff;
+    border-radius:50%;
+    touch-action:none;
+  }
+  .crop-handle[data-handle="nw"]{left:-9px;top:-9px;cursor:nwse-resize;}
+  .crop-handle[data-handle="ne"]{right:-9px;top:-9px;cursor:nesw-resize;}
+  .crop-handle[data-handle="sw"]{left:-9px;bottom:-9px;cursor:nesw-resize;}
+  .crop-handle[data-handle="se"]{right:-9px;bottom:-9px;cursor:nwse-resize;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Print Sheet</h1>
+  <p>Upload one or many photos, set the passport size, then lay out copies on A4 pages ready for print.</p>
+  <div class="developer-credit">
+    <span>This app is developed by Raj · Contact developer +91 83999 64358</span>
+    <a class="wa-link"
+       href="https://wa.me/918399964358"
+       target="_blank"
+       rel="noopener noreferrer"
+       aria-label="Contact developer on WhatsApp"
+       title="Contact developer on WhatsApp">WA</a>
+  </div>
+</div>
+
+<main>
+
+  <!-- @@ANCHOR[html-crop-modal] CROP MODAL -->
+  <div class="crop-modal" id="cropModal" style="display:none;">
+    <div class="crop-panel">
+      <div class="tag" style="margin-bottom:10px;">crop photo</div>
+      <div class="crop-stage" id="cropStage">
+        <img id="cropImg" draggable="false" alt="">
+        <div class="crop-box" id="cropBox">
+          <div class="crop-handle" data-handle="nw"></div>
+          <div class="crop-handle" data-handle="ne"></div>
+          <div class="crop-handle" data-handle="sw"></div>
+          <div class="crop-handle" data-handle="se"></div>
+        </div>
+      </div>
+      <div class="row" style="margin:10px 0 0;">
+        <label>Crop shape</label>
+        <div class="leader"></div>
+        <button class="link-toggle" id="cropRatioToggle" type="button">locked to ratio</button>
+      </div>
+      <div class="hint">Drag inside the box to move it, drag a corner to resize. Toggle above to crop freely instead of locking to your target width/height ratio.</div>
+      <div class="segrow" style="margin-top:12px;">
+        <button class="btn" id="cropResetBtn" type="button">Reset</button>
+        <button class="btn" id="cropCancelBtn" type="button">Cancel</button>
+        <button class="btn primary" id="cropApplyBtn" type="button" style="margin-left:auto;">Apply crop</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- @@ANCHOR[html-bulk-zip] BULK COMPRESS + ZIP -->
+  <div class="card">
+    <span class="tag">bulk — compress many photos → zip</span>
+    <button class="btn block" id="bulkToggleBtn" type="button">📦 Bulk compress photos &amp; download ZIP</button>
+    <div id="bulkPanel" style="display:none;margin-top:14px;">
+      <label class="drop" id="bulkDropZone">
+        <input type="file" id="bulkFileInput" accept="image/*" multiple>
+        <div class="big">Select photos</div>
+        <div class="small">Choose or drag in photos — some devices cap this picker around 100 files</div>
+      </label>
+      <button class="btn block" id="bulkFolderBtn" type="button" style="margin-top:8px;">
+        📁 Or select a whole folder (no limit)
+      </button>
+      <input type="file" id="bulkFolderInput" multiple webkitdirectory directory style="display:none;">
+      <div class="hint" id="bulkCount" style="margin-top:8px;">No photos loaded yet.</div>
+
+      <div class="row" style="align-items:flex-start;margin-top:14px;">
+        <label style="padding-top:6px;">Compress to</label>
+        <input type="range" id="bulkCompress" min="20" max="500" step="10" value="150">
+        <span id="bulkCompressLabel" style="font-size:11px;width:64px;text-align:right;">150 kb</span>
+      </div>
+      <div class="hint">Each photo is compressed toward this target size (JPEG), one by one, right here in your browser — nothing is uploaded anywhere.</div>
+
+      <button class="btn primary block" id="bulkZipBtn" type="button" style="margin-top:14px;" disabled>Compress all &amp; download ZIP</button>
+      <div class="hint" id="bulkProgress" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- @@ANCHOR[html-pdf-to-images] PDF TO IMAGES + ZIP -->
+  <div class="card">
+    <span class="tag">pdf — convert pages to images → compress → zip</span>
+    <button class="btn block" id="pdfToggleBtn" type="button">📄 PDF to images &amp; download ZIP</button>
+    <div id="pdfPanel" style="display:none;margin-top:14px;">
+      <label class="drop" id="pdfDropZone">
+        <input type="file" id="pdfFileInput" accept="application/pdf,.pdf">
+        <div class="big">Select a PDF</div>
+        <div class="small">Choose or drag in a .pdf file — each page becomes an image</div>
+      </label>
+      <div class="hint" id="pdfCount" style="margin-top:8px;">No PDF loaded yet.</div>
+
+      <div class="row" style="align-items:flex-start;margin-top:14px;">
+        <label style="padding-top:6px;">Render quality</label>
+        <input type="range" id="pdfScale" min="1" max="4" step="0.5" value="2">
+        <span id="pdfScaleLabel" style="font-size:11px;width:64px;text-align:right;">2×</span>
+      </div>
+      <div class="hint">Higher render quality gives sharper page images before compression, at the cost of more processing time.</div>
+
+      <div class="row" style="align-items:flex-start;margin-top:14px;">
+        <label style="padding-top:6px;">Compress to</label>
+        <input type="range" id="pdfCompress" min="20" max="500" step="10" value="150">
+        <span id="pdfCompressLabel" style="font-size:11px;width:64px;text-align:right;">150 kb</span>
+      </div>
+      <div class="hint">Each page is rendered to an image, then compressed toward this target size (JPEG), one by one, right here in your browser — nothing is uploaded anywhere.</div>
+
+      <button class="btn primary block" id="pdfZipBtn" type="button" style="margin-top:14px;" disabled>Convert all pages &amp; download ZIP</button>
+      <div class="hint" id="pdfProgress" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- @@ANCHOR[html-upload] 1. UPLOAD (multiple photos) -->
+  <div class="card">
+    <span class="tag">01 — source photos</span>
+    <label class="drop" id="dropZone">
+      <input type="file" id="fileInput" accept="image/*" multiple>
+      <div class="big">Upload photos</div>
+      <div class="small">Tap to choose one or many files, or drag them here</div>
+    </label>
+    <!-- @@ANCHOR[html-photo-list] thumbnails of uploaded photos (filled by renderPhotoList) -->
+    <div class="photo-list" id="photoList"></div>
+    <div class="hint" id="photoListHint" style="display:none;margin-top:8px;">Tap a photo to edit it (crop, background removal). Size, border and colour apply to every photo. Set how many copies of each photo you want under its thumbnail.</div>
+  </div>
+
+  <!-- @@ANCHOR[html-photo-settings] 2. PREVIEW + SIZE SETTINGS -->
+  <div class="card" id="settingsCard" style="display:none;">
+    <span class="tag">02 — photo settings</span>
+    <div class="preview-row">
+      <div class="preview-box">
+        <div class="preview-frame"><canvas id="photoCanvas"></canvas></div>
+        <div class="cap" id="photoCap">—</div>
+      </div>
+
+      <div class="fields">
+        <div class="row">
+          <label for="removeBg">Remove background</label>
+          <div class="leader"></div>
+          <button class="btn" id="removeBg">Off</button>
+        </div>
+        <div class="hint" id="bgHint" style="display:none;">AI background removal detects the subject and removes the background while preserving edge detail.</div>
+
+        <div class="row">
+          <label>Crop</label>
+          <div class="leader"></div>
+          <button class="btn" id="openCropBtn" type="button">Crop photo</button>
+        </div>
+        <div class="hint" id="cropHint">Crop box is locked to your target width/height ratio below.</div>
+
+        <!-- @@ANCHOR[html-adjustments] photo clarity: brightness, contrast, colour, sharpness -->
+        <div class="tag" style="margin:6px 0 8px;border-bottom:none;padding-bottom:0;">make photo clear</div>
+        <div class="row" style="align-items:flex-start;">
+          <label for="adjBrightness" style="padding-top:2px;">Brightness</label>
+          <input type="range" id="adjBrightness" data-adj="brightness" min="-100" max="100" step="1" value="0">
+          <span id="adjBrightnessVal" style="font-size:11px;width:34px;text-align:right;">0</span>
+        </div>
+        <div class="row" style="align-items:flex-start;">
+          <label for="adjContrast" style="padding-top:2px;">Contrast</label>
+          <input type="range" id="adjContrast" data-adj="contrast" min="-100" max="100" step="1" value="0">
+          <span id="adjContrastVal" style="font-size:11px;width:34px;text-align:right;">0</span>
+        </div>
+        <div class="row" style="align-items:flex-start;">
+          <label for="adjSaturation" style="padding-top:2px;">Color / saturation</label>
+          <input type="range" id="adjSaturation" data-adj="saturation" min="-100" max="100" step="1" value="0">
+          <span id="adjSaturationVal" style="font-size:11px;width:34px;text-align:right;">0</span>
+        </div>
+        <div class="row" style="align-items:flex-start;">
+          <label for="adjWarmth" style="padding-top:2px;">Warmth (cool ↔ warm)</label>
+          <input type="range" id="adjWarmth" data-adj="warmth" min="-100" max="100" step="1" value="0">
+          <span id="adjWarmthVal" style="font-size:11px;width:34px;text-align:right;">0</span>
+        </div>
+        <div class="row" style="align-items:flex-start;">
+          <label for="adjSharpness" style="padding-top:2px;">Sharpness / clarity</label>
+          <input type="range" id="adjSharpness" data-adj="sharpness" min="0" max="100" step="1" value="0">
+          <span id="adjSharpnessVal" style="font-size:11px;width:34px;text-align:right;">0</span>
+        </div>
+        <div class="segrow" style="margin:4px 0 4px;">
+          <button class="btn" id="adjAutoBtn" type="button">✨ Auto enhance</button>
+          <button class="btn" id="adjResetBtn" type="button">Reset</button>
+          <button class="btn" id="adjAllBtn" type="button">Apply to all photos</button>
+        </div>
+        <div class="hint">Adjustments are saved per photo. Auto enhance fixes dark/flat photos and adds a little sharpness.</div>
+
+        <div class="row">
+          <label>Border color</label>
+          <div class="leader"></div>
+          <select id="borderColor">
+            <option value="none">None</option>
+            <option value="#000000">Black</option>
+            <option value="#1f3a63">Blue</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="backgroundColor">Background color</label>
+          <div class="leader"></div>
+          <input type="color" id="backgroundColor" value="#ffffff"
+                 style="width:48px;height:32px;padding:2px;cursor:pointer;">
+          <button class="btn" id="bgTransparent" type="button">Transparent</button>
+        </div>
+        <div class="hint">Choose the background color shown behind the photo. Useful after removing the background.</div>
+
+        <div class="row">
+          <label for="borderWidth">Border width</label>
+          <div class="leader"></div>
+          <input type="number" id="borderWidth" value="3" min="0" max="30" step="1"> px
+        </div>
+
+        <!-- @@ANCHOR[html-quick-sizes] one-tap passport sizes -->
+        <div class="segrow" style="margin-bottom:10px;">
+          <button class="btn" id="sizePassportMM" type="button">Passport 35×45 mm</button>
+          <button class="btn" id="sizePassportUS" type="button">US passport 2×2 in</button>
+        </div>
+
+        <div class="row dims">
+          <label>Width</label>
+          <input type="number" id="widthIn" value="0" min="1" step="0.1">
+          <button class="link-toggle" id="lockRatio" title="Keep width/height locked to this ratio">free</button>
+        </div>
+        <div class="row dims">
+          <label>Height</label>
+          <input type="number" id="heightIn" value="0" min="1" step="0.1">
+          <select id="unit">
+             <option value="mm">mm</option>
+             <option value="cm" selected>cm</option>
+             <option value="in">in</option>
+             <option value="px">px</option>
+           </select>
+        </div>
+
+        <div class="row">
+          <label for="dpi">Print DPI</label>
+          <div class="leader"></div>
+          <input type="number" id="dpi" value="300" min="72" max="1200" step="1">
+        </div>
+
+        <div class="row" style="align-items:flex-start;">
+          <label style="padding-top:6px;">Compress to</label>
+          <input type="range" id="compress" min="1" max="500" step="1" value="500">
+          <span id="compressLabel" style="font-size:11px;width:56px;text-align:right;">off</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="presets-block">
+      <div class="tag" style="margin:14px 0 8px;border-top:1px dotted var(--line);padding-top:10px;border-bottom:none;padding-bottom:0;">size presets</div>
+      <div class="row wide">
+        <label for="presetSelect">Saved preset</label>
+        <div class="leader"></div>
+        <select id="presetSelect"><option value="">— none —</option></select>
+      </div>
+      <div class="segrow" style="margin-bottom:12px;">
+        <button class="btn" id="applyPresetBtn" type="button">Apply</button>
+        <button class="btn" id="deletePresetBtn" type="button">Delete</button>
+      </div>
+      <div class="row wide">
+        <label for="presetName">New preset name</label>
+        <div class="leader"></div>
+        <input type="text" id="presetName" placeholder="e.g. Passport 3x4" style="width:140px;">
+      </div>
+      <button class="btn block" id="savePresetBtn" type="button">Save current settings as preset</button>
+      <div class="hint">Presets store width, height, unit, DPI and compression target on this device (this browser), so you can reapply them anytime.</div>
+    </div>
+
+    <button class="btn block" id="downloadPhoto" style="margin-top:12px;">Download selected photo</button>
+    <button class="btn block" id="downloadAllZip" type="button" style="margin-top:8px;display:none;">Download all edited photos (ZIP)</button>
+  </div>
+
+  <!-- @@ANCHOR[html-print-layout] 3. PRINT LAYOUT -->
+  <div class="card" id="layoutCard" style="display:none;">
+    <span class="tag">03 — print layout (A4)</span>
+    <div class="grid2">
+      <div class="fieldstack">
+        <label for="copies">Copies of each photo</label>
+        <input type="number" id="copies" value="6" min="1" max="200">
+      </div>
+      <div class="fieldstack">
+        <label for="gap">Gap between photos (mm)</label>
+        <input type="number" id="gap" value="2" min="0" max="30" step="0.5">
+      </div>
+      <div class="fieldstack">
+        <label for="align">Align on page</label>
+        <select id="align">
+          <option value="middle" selected>Middle</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- @@ANCHOR[html-a4-pages] A4 page previews (canvases added by renderA4) -->
+    <div class="a4wrap" id="a4pages"></div>
+    <div class="meta">
+      <span id="fitInfo">—</span>
+      <span id="warnInfo" class="warn"></span>
+    </div>
+
+    <button class="btn primary block" id="downloadPdf" style="margin-top:14px;">Download A4 PDF</button>
+  </div>
+
+</main>
+
+<footer>Everything runs in your browser — your photo is never uploaded anywhere.</footer>
+
+<script>
+(function(){
+  /* ======================================================================
+     ANCHOR INDEX — search for "@@ANCHOR[name]" to jump to a section
+       js-state              global settings + getters for the selected photo
+       js-photos-model       photos[] list, activePhoto(), selectPhoto(), removePhoto()
+       js-upload             multi-file upload / drag-drop / loadFile()
+       js-photo-list-ui      thumbnails + per-photo copies box (renderPhotoList)
+       js-bg-removal         AI background removal (per photo)
+       js-dimensions         width / height / ratio lock
+       js-quick-sizes        one-tap passport size buttons
+       js-adjustments        brightness/contrast/colour/sharpness sliders + applyAdjustments()
+       js-bg-color           background colour
+       js-presets            saved size presets
+       js-crop-tool          crop modal (per photo)
+       js-units-and-crop-rect  mm/cm/in/px helpers, getCropRect(p)
+       js-build-edited-photo buildEditedPhoto(p, encode)
+       js-photo-preview      single photo preview
+       js-a4-layout          computeLayout, buildSlots, renderA4 (multi-page)
+       js-render-all         renderAll()
+       js-bulk-zip           bulk compress & ZIP tool
+       js-pdf-to-images      PDF to images tool
+       js-downloads          download photo / all ZIP / A4 PDF
+     ====================================================================== */
+
+  // @@ANCHOR[js-state] global settings shared by all photos. Per-photo values
+  // (img, workCanvas, bgRemoved, cropRect) live on each entry in photos[]; the
+  // getters below expose the SELECTED photo so older code keeps working.
+  const photos = [];            // [{id,name,url,img,workCanvas,bgRemoved,cropRect,copies}]
+  let activeIdx = -1;
+  let photoSeq = 0;
+  const emptyCanvas = document.createElement('canvas');
+  function activePhoto(){ return photos[activeIdx] || null; }
+
+  const state = {
+    backgroundColor: '#ffffff',
+    aspectLocked: false,
+    ratio: 3/4,
+  };
+  Object.defineProperties(state, {
+    img:        { get(){ const p = activePhoto(); return p ? p.img : null; } },
+    workCanvas: { get(){ const p = activePhoto(); return p ? p.workCanvas : emptyCanvas; } },
+    bgRemoved:  { get(){ const p = activePhoto(); return p ? p.bgRemoved : false; },
+                  set(v){ const p = activePhoto(); if(p) p.bgRemoved = v; } },
+    cropRect:   { get(){ const p = activePhoto(); return p ? p.cropRect : null; },
+                  set(v){ const p = activePhoto(); if(p) p.cropRect = v; } },
+  });
+
+  const el = id => document.getElementById(id);
+  const fileInput = el('fileInput');
+  const dropZone = el('dropZone');
+  const settingsCard = el('settingsCard');
+  const layoutCard = el('layoutCard');
+  const photoCanvas = el('photoCanvas');
+  const photoCap = el('photoCap');
+  const a4pages = el('a4pages');
+  const photoListEl = el('photoList');
+
+  // @@ANCHOR[js-upload] upload (one or many photos)
+  fileInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files.length) loadFiles(e.target.files);
+    fileInput.value = ''; // allow choosing the same files again later
+  });
+  ['dragover','dragenter'].forEach(ev => dropZone.addEventListener(ev, e=>{e.preventDefault();dropZone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e=>{e.preventDefault();dropZone.classList.remove('drag');}));
+  dropZone.addEventListener('drop', e=>{
+    if(e.dataTransfer.files && e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
+  });
+
+  function loadFiles(fileList){
+    Array.from(fileList).forEach(file => {
+      if(isSupportedImageFile(file)) loadFile(file);
+    });
+  }
+
+  let renderQueued = false;
+  function queueRender(){
+    if(renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => { renderQueued = false; renderAll(); });
+  }
+
+  function loadFile(file){
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const wasEmpty = photos.length === 0;
+      const wc = document.createElement('canvas');
+      wc.width = img.naturalWidth;
+      wc.height = img.naturalHeight;
+      wc.getContext('2d').drawImage(img, 0, 0);
+
+      photos.push({
+        id: ++photoSeq,
+        name: file.name || ('photo-' + photoSeq),
+        url, img,
+        workCanvas: wc,
+        bgRemoved: false,
+        cropRect: null,
+        adjust: { brightness:0, contrast:0, saturation:0, warmth:0, sharpness:0 },
+        copies: Math.max(1, parseInt(el('copies').value, 10) || 1)
+      });
+
+      if(wasEmpty){
+        activeIdx = 0;
+        // The first photo starts at its native pixel size. Use the quick
+        // passport buttons (or type a size) to change it for ALL photos.
+        const nativeDpi = parseFloat(el('dpi').value) || 300;
+        const nativeUnit = el('unit').value;
+        const nativeWidth = img.naturalWidth;
+        const nativeHeight = img.naturalHeight;
+        if(nativeUnit === 'px'){
+          widthInput.value = nativeWidth;
+          heightInput.value = nativeHeight;
+        } else {
+          const mmW = nativeWidth * 25.4 / nativeDpi;
+          const mmH = nativeHeight * 25.4 / nativeDpi;
+          const factor = nativeUnit === 'cm' ? 10 : 1;
+          widthInput.value = (mmW / factor).toFixed(2);
+          heightInput.value = (mmH / factor).toFixed(2);
+        }
+        state.ratio = nativeWidth / nativeHeight;
+        state.aspectLocked = false;
+        lockBtn.classList.remove('on');
+        lockBtn.textContent = 'free';
+        syncActiveUI();
+        settingsCard.style.display = 'block';
+        layoutCard.style.display = 'block';
+      }
+      renderPhotoList();
+      queueRender();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      alert('Could not open "' + (file.name || 'this file') + '" as an image.');
+    };
+    img.src = url;
+  }
+
+  // @@ANCHOR[js-photos-model] select / remove photos
+  function syncActiveUI(){
+    const p = activePhoto();
+    if(!p) return;
+    const btn = el('removeBg');
+    btn.textContent = p.bgRemoved ? 'On' : 'Off';
+    btn.classList.toggle('on', p.bgRemoved);
+    btn.disabled = false;
+    el('bgHint').style.display = p.bgRemoved ? 'block' : 'none';
+    el('bgHint').textContent = p.bgRemoved
+      ? 'AI background removed — transparent edges preserved.'
+      : 'AI background removal detects the subject and removes the background while preserving edge detail.';
+    el('openCropBtn').textContent = p.cropRect ? 'Recrop' : 'Crop photo';
+    syncAdjustUI();
+  }
+
+  function selectPhoto(i){
+    if(bgRemovalBusy || i < 0 || i >= photos.length || i === activeIdx) return;
+    activeIdx = i;
+    syncActiveUI();
+    renderPhotoList();
+    renderAll();
+  }
+
+  function removePhoto(i){
+    if(bgRemovalBusy || i < 0 || i >= photos.length) return;
+    URL.revokeObjectURL(photos[i].url);
+    photos.splice(i, 1);
+    if(!photos.length){
+      activeIdx = -1;
+      settingsCard.style.display = 'none';
+      layoutCard.style.display = 'none';
+      renderPhotoList();
+      return;
+    }
+    if(i < activeIdx) activeIdx--;
+    else if(i === activeIdx) activeIdx = Math.min(i, photos.length - 1);
+    syncActiveUI();
+    renderPhotoList();
+    renderAll();
+  }
+
+  // @@ANCHOR[js-photo-list-ui] thumbnails + per-photo copies box
+  function renderPhotoList(){
+    photoListEl.innerHTML = '';
+    el('photoListHint').style.display = photos.length ? 'block' : 'none';
+    el('downloadAllZip').style.display = photos.length > 1 ? 'block' : 'none';
+
+    photos.forEach((p, i) => {
+      const item = document.createElement('div');
+      item.className = 'photo-item' + (i === activeIdx ? ' active' : '');
+      item.title = p.name;
+
+      const thumb = document.createElement('img');
+      thumb.src = p.url;
+      thumb.alt = p.name;
+      item.appendChild(thumb);
+
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'rm';
+      rm.textContent = '×';
+      rm.title = 'Remove this photo';
+      rm.addEventListener('click', e => { e.stopPropagation(); removePhoto(i); });
+      item.appendChild(rm);
+
+      const cp = document.createElement('label');
+      cp.className = 'cp';
+      cp.appendChild(document.createTextNode('copies'));
+      const num = document.createElement('input');
+      num.type = 'number';
+      num.min = '1'; num.max = '200'; num.step = '1';
+      num.value = p.copies;
+      num.addEventListener('click', e => e.stopPropagation());
+      num.addEventListener('input', () => {
+        p.copies = Math.min(200, Math.max(1, parseInt(num.value, 10) || 1));
+        renderAll();
+      });
+      cp.appendChild(num);
+      item.appendChild(cp);
+
+      item.addEventListener('click', () => selectPhoto(i));
+      photoListEl.appendChild(item);
+    });
+  }
+
+  // the global "Copies of each photo" box sets every photo's copies at once
+  el('copies').addEventListener('input', () => {
+    const v = Math.min(200, Math.max(1, parseInt(el('copies').value, 10) || 1));
+    photos.forEach(p => { p.copies = v; });
+    renderPhotoList();
+    renderAll();
+  });
+
+  function resetWorkingCanvas(){
+    const p = activePhoto();
+    if(!p) return;
+    const c = p.workCanvas;
+    c.width = p.img.naturalWidth;
+    c.height = p.img.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.drawImage(p.img,0,0);
+  }
+
+  // @@ANCHOR[js-bg-removal] ---------- AI background removal ----------
+  // Uses the same MediaPipe Selfie Segmentation technique as the reference app.
+  // The high-quality model creates a subject mask and applies it to the
+  // original image so the subject's RGB detail is preserved.
+  let segmentationModel = null;
+  let bgRemovalBusy = false;
+
+  function getSegmentationModel(){
+    if (!segmentationModel) {
+      segmentationModel = new SelfieSegmentation({
+        locateFile: (file) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+      });
+      // Model 1 is the higher-quality model used by the reference app.
+      segmentationModel.setOptions({ modelSelection: 1 });
+    }
+    return segmentationModel;
+  }
+
+  async function applyBgRemoval(){
+    if(!state.img || bgRemovalBusy) return;
+
+    bgRemovalBusy = true;
+    const btn = el('removeBg');
+    const hint = el('bgHint');
+
+    btn.disabled = true;
+    btn.textContent = 'Processing…';
+    hint.style.display = 'block';
+    hint.textContent = 'AI background removal is processing…';
+
+    try {
+      const model = getSegmentationModel();
+
+      const results = await new Promise((resolve, reject) => {
+        let finished = false;
+
+        const finish = (callback, value) => {
+          if (finished) return;
+          finished = true;
+          callback(value);
+        };
+
+        model.onResults(r => finish(resolve, r));
+
+        const timer = setTimeout(() => {
+          finish(reject, new Error('Background removal timed out.'));
+        }, 30000);
+
+        model.send({ image: state.img })
+          .then(() => clearTimeout(timer))
+          .catch(err => {
+            clearTimeout(timer);
+            finish(reject, err);
+          });
+      });
+
+      const c = state.workCanvas;
+      c.width = state.img.naturalWidth;
+      c.height = state.img.naturalHeight;
+
+      const ctx = c.getContext('2d', { alpha: true, willReadFrequently: true });
+
+      // Draw the AI mask first. The reference uses a small blur in high
+      // quality mode to produce smoother edges.
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.save();
+      ctx.filter = 'blur(2.5px)';
+      ctx.drawImage(results.segmentationMask, 0, 0, c.width, c.height);
+      ctx.restore();
+
+      const maskData = ctx.getImageData(0, 0, c.width, c.height);
+      const mask = maskData.data;
+
+      // Now draw the original image and apply the mask as alpha.
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.drawImage(results.image, 0, 0, c.width, c.height);
+
+      const imageData = ctx.getImageData(0, 0, c.width, c.height);
+      const pixels = imageData.data;
+
+      for(let i = 0; i < pixels.length; i += 4){
+        let alpha = mask[i + 3];
+
+        // Same edge cleanup/remapping approach as the reference.
+        if(alpha > 0 && alpha < 255){
+          if(alpha < 50) alpha = 0;
+          else alpha = ((alpha - 50) / 205) * 255;
+        }
+
+        pixels[i + 3] = alpha;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+
+      hint.textContent =
+        'AI background removed — transparent edges preserved.';
+    } catch(err) {
+      console.error('AI background removal failed:', err);
+      state.bgRemoved = false;
+      resetWorkingCanvas();
+      hint.style.display = 'block';
+      hint.textContent = 'Could not process this image. Please try again.';
+    } finally {
+      bgRemovalBusy = false;
+      btn.disabled = false;
+      btn.textContent = state.bgRemoved ? 'On' : 'Off';
+      btn.classList.toggle('on', state.bgRemoved);
+      renderAll();
+    }
+  }
+
+  el('removeBg').addEventListener('click', async () => {
+    if(!state.img || bgRemovalBusy) return;
+
+    state.bgRemoved = !state.bgRemoved;
+
+    if(state.bgRemoved){
+      const btn = el('removeBg');
+      btn.textContent = 'Processing…';
+      btn.classList.add('on');
+      el('bgHint').style.display = 'block';
+      await applyBgRemoval();
+    } else {
+      resetWorkingCanvas();
+      el('removeBg').textContent = 'Off';
+      el('removeBg').classList.remove('on');
+      el('removeBg').disabled = false;
+      el('bgHint').style.display = 'none';
+      el('bgHint').textContent =
+        'AI background removal detects the subject and removes the background while preserving edge detail.';
+      renderAll();
+    }
+  });
+
+  // @@ANCHOR[js-dimensions] ---------- dimension logic ----------
+  const widthInput = el('widthIn');
+  const heightInput = el('heightIn');
+  const unitSelect = el('unit');
+  const lockBtn = el('lockRatio');
+
+  lockBtn.addEventListener('click', () => {
+    state.aspectLocked = !state.aspectLocked;
+    lockBtn.classList.toggle('on', state.aspectLocked);
+    lockBtn.textContent = state.aspectLocked ? 'linked' : 'free';
+    if(state.aspectLocked){
+      state.ratio = parseFloat(widthInput.value) / parseFloat(heightInput.value);
+    }
+  });
+
+  widthInput.addEventListener('input', () => {
+    if(state.aspectLocked){
+      const w = parseFloat(widthInput.value)||0;
+      heightInput.value = (w / state.ratio).toFixed(2);
+    } else {
+      state.ratio = parseFloat(widthInput.value)/parseFloat(heightInput.value);
+    }
+    renderAll();
+  });
+  heightInput.addEventListener('input', () => {
+    if(state.aspectLocked){
+      const h = parseFloat(heightInput.value)||0;
+      widthInput.value = (h * state.ratio).toFixed(2);
+    } else {
+      state.ratio = parseFloat(widthInput.value)/parseFloat(heightInput.value);
+    }
+    renderAll();
+  });
+  unitSelect.addEventListener('change', renderAll);
+  el('dpi').addEventListener('input', renderAll);
+  el('borderColor').addEventListener('change', renderAll);
+  el('borderWidth').addEventListener('input', renderAll);
+
+  // @@ANCHOR[js-quick-sizes] one-tap passport sizes (apply to all photos)
+  function setQuickSize(w, h, unit){
+    unitSelect.value = unit;
+    widthInput.value = w;
+    heightInput.value = h;
+    state.ratio = w / h;
+    renderAll();
+  }
+  el('sizePassportMM').addEventListener('click', () => setQuickSize(35, 45, 'mm'));
+  el('sizePassportUS').addEventListener('click', () => setQuickSize(2, 2, 'in'));
+
+  // @@ANCHOR[js-adjustments] photo clarity controls (stored per photo in p.adjust)
+  const ADJ_KEYS = ['brightness','contrast','saturation','warmth','sharpness'];
+  const ADJ_IDS = { brightness:'adjBrightness', contrast:'adjContrast', saturation:'adjSaturation', warmth:'adjWarmth', sharpness:'adjSharpness' };
+
+  function hasAdjust(a){ return ADJ_KEYS.some(k => a[k] !== 0); }
+
+  function syncAdjustUI(){
+    const p = activePhoto();
+    if(!p) return;
+    ADJ_KEYS.forEach(k => {
+      el(ADJ_IDS[k]).value = p.adjust[k];
+      el(ADJ_IDS[k] + 'Val').textContent = p.adjust[k];
+    });
+  }
+
+  ADJ_KEYS.forEach(k => {
+    el(ADJ_IDS[k]).addEventListener('input', e => {
+      const p = activePhoto();
+      if(!p) return;
+      p.adjust[k] = parseInt(e.target.value, 10) || 0;
+      el(ADJ_IDS[k] + 'Val').textContent = p.adjust[k];
+      queueRender();
+    });
+  });
+
+  el('adjResetBtn').addEventListener('click', () => {
+    const p = activePhoto();
+    if(!p) return;
+    ADJ_KEYS.forEach(k => { p.adjust[k] = 0; });
+    syncAdjustUI();
+    renderAll();
+  });
+
+  el('adjAllBtn').addEventListener('click', () => {
+    const p = activePhoto();
+    if(!p) return;
+    photos.forEach(o => { ADJ_KEYS.forEach(k => { o.adjust[k] = p.adjust[k]; }); });
+    renderAll();
+  });
+
+  // Auto enhance: nudge brightness toward a mid-tone average and stretch contrast
+  // based on the spread of the photo's brightness values.
+  el('adjAutoBtn').addEventListener('click', () => {
+    const p = activePhoto();
+    if(!p) return;
+    const src = p.workCanvas;
+    const sc = Math.min(1, 200 / Math.max(src.width, src.height));
+    const t = document.createElement('canvas');
+    t.width = Math.max(1, Math.round(src.width * sc));
+    t.height = Math.max(1, Math.round(src.height * sc));
+    const tctx = t.getContext('2d', { willReadFrequently: true });
+    tctx.drawImage(src, 0, 0, t.width, t.height);
+    const d = tctx.getImageData(0, 0, t.width, t.height).data;
+    const hist = new Array(256).fill(0);
+    let n = 0, sum = 0;
+    for(let i=0; i<d.length; i+=4){
+      if(d[i+3] < 128) continue;
+      const y = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
+      hist[y]++; n++; sum += y;
+    }
+    if(!n) return;
+    const mean = sum / n;
+    let acc = 0, lo = 0, hi = 255;
+    for(let v=0; v<256; v++){ acc += hist[v]; if(acc >= n*0.01){ lo = v; break; } }
+    acc = 0;
+    for(let v=255; v>=0; v--){ acc += hist[v]; if(acc >= n*0.01){ hi = v; break; } }
+    const spread = Math.max(1, hi - lo);
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    p.adjust.brightness = Math.round(clamp((122 - mean) * 0.45, -40, 40));
+    p.adjust.contrast   = Math.round(clamp((200 - spread) * 0.22, 0, 40));
+    p.adjust.saturation = 10;
+    p.adjust.warmth     = 0;
+    p.adjust.sharpness  = 35;
+    syncAdjustUI();
+    renderAll();
+  });
+
+  // Pixel-level adjustment (works on every browser, keeps transparency).
+  function applyAdjustments(canvas, a){
+    const w = canvas.width, h = canvas.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const img = ctx.getImageData(0, 0, w, h);
+    const d = img.data;
+
+    const bAdd = a.brightness * 2.55;
+    const cv = a.contrast * 2.55;
+    const cF = (259 * (cv + 255)) / (255 * (259 - cv));
+    const sF = 1 + a.saturation / 100;
+    const wAdd = a.warmth * 0.4;
+    const cl = v => v < 0 ? 0 : (v > 255 ? 255 : v);
+
+    if(a.brightness || a.contrast || a.saturation || a.warmth){
+      for(let i=0; i<d.length; i+=4){
+        if(d[i+3] === 0) continue;
+        let r = d[i], g = d[i+1], b = d[i+2];
+        r += bAdd; g += bAdd; b += bAdd;
+        if(a.contrast){ r = cF*(r-128)+128; g = cF*(g-128)+128; b = cF*(b-128)+128; }
+        if(a.saturation){
+          const gray = 0.299*r + 0.587*g + 0.114*b;
+          r = gray + (r-gray)*sF; g = gray + (g-gray)*sF; b = gray + (b-gray)*sF;
+        }
+        if(a.warmth){ r += wAdd; b -= wAdd; }
+        d[i] = cl(r); d[i+1] = cl(g); d[i+2] = cl(b);
+      }
+    }
+
+    if(a.sharpness > 0 && w > 2 && h > 2){
+      // unsharp mask with a 3x3 box blur
+      const amount = a.sharpness / 100 * 1.6;
+      const src = new Uint8ClampedArray(d);
+      for(let y=0; y<h; y++){
+        const y0 = (y > 0 ? y-1 : y) * w, y1 = y * w, y2 = (y < h-1 ? y+1 : y) * w;
+        for(let x=0; x<w; x++){
+          const x0 = x > 0 ? x-1 : x, x2 = x < w-1 ? x+1 : x;
+          const o = (y1 + x) * 4;
+          if(src[o+3] === 0) continue;
+          for(let c=0; c<3; c++){
+            const blur = (src[(y0+x0)*4+c] + src[(y0+x)*4+c] + src[(y0+x2)*4+c] +
+                          src[(y1+x0)*4+c] + src[o+c]        + src[(y1+x2)*4+c] +
+                          src[(y2+x0)*4+c] + src[(y2+x)*4+c] + src[(y2+x2)*4+c]) / 9;
+            d[o+c] = cl(src[o+c] + amount * (src[o+c] - blur));
+          }
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // @@ANCHOR[js-bg-color] ---------- background color ----------
+  const backgroundColorInput = el('backgroundColor');
+  const bgTransparentBtn = el('bgTransparent');
+
+  backgroundColorInput.addEventListener('input', () => {
+    state.backgroundColor = backgroundColorInput.value;
+    bgTransparentBtn.classList.remove('on');
+    renderAll();
+  });
+
+  bgTransparentBtn.addEventListener('click', () => {
+    // Transparent is the best default when background removal is enabled.
+    bgTransparentBtn.classList.toggle('on');
+    if(bgTransparentBtn.classList.contains('on')){
+      state.backgroundColor = null;
+    } else {
+      state.backgroundColor = backgroundColorInput.value || '#ffffff';
+    }
+    renderAll();
+  });
+  ['gap','align'].forEach(id => el(id).addEventListener('input', renderAll));
+  el('align').addEventListener('change', renderAll);
+
+  // compress slider
+  const compressSlider = el('compress');
+  const compressLabel = el('compressLabel');
+  compressSlider.addEventListener('input', () => {
+    const v = parseInt(compressSlider.value,10);
+    compressLabel.textContent = (v>=500) ? 'off' : (v + ' kb');
+    renderAll();
+  });
+
+  // @@ANCHOR[js-presets] ---------- presets ----------
+  const PRESET_KEY = 'printsheet_presets_v1';
+  const presetSelect = el('presetSelect');
+  const presetNameInput = el('presetName');
+
+  function loadPresets(){
+    try{
+      const list = JSON.parse(localStorage.getItem(PRESET_KEY));
+      return Array.isArray(list) ? list : [];
+    } catch(e){
+      return [];
+    }
+  }
+
+  function savePresetsList(list){
+    localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+  }
+
+  function refreshPresetSelect(selectName){
+    const list = loadPresets();
+    const keep = selectName !== undefined ? selectName : presetSelect.value;
+    presetSelect.innerHTML = '<option value="">— none —</option>' +
+      list.map(p => `<option value="${p.name.replace(/"/g,'&quot;')}">${p.name}</option>`).join('');
+    if(list.some(p => p.name === keep)) presetSelect.value = keep;
+  }
+
+  el('savePresetBtn').addEventListener('click', () => {
+    const name = (presetNameInput.value || '').trim();
+    if(!name){
+      alert('Give this preset a name first.');
+      return;
+    }
+    const preset = {
+      name,
+      width: parseFloat(widthInput.value) || 0,
+      height: parseFloat(heightInput.value) || 0,
+      unit: unitSelect.value,
+      dpi: parseFloat(el('dpi').value) || 300,
+      targetKB: parseInt(compressSlider.value, 10)
+    };
+    const list = loadPresets().filter(p => p.name !== name);
+    list.push(preset);
+    savePresetsList(list);
+    refreshPresetSelect(name);
+    presetNameInput.value = '';
+  });
+
+  el('applyPresetBtn').addEventListener('click', () => {
+    const name = presetSelect.value;
+    if(!name) return;
+    const preset = loadPresets().find(p => p.name === name);
+    if(!preset) return;
+
+    widthInput.value = preset.width;
+    heightInput.value = preset.height;
+    unitSelect.value = preset.unit;
+    el('dpi').value = preset.dpi;
+    state.ratio = preset.height ? (preset.width / preset.height) : state.ratio;
+
+    const clampedKB = Math.min(500, Math.max(1, preset.targetKB || 500));
+    compressSlider.value = clampedKB;
+    compressLabel.textContent = (clampedKB >= 500) ? 'off' : (clampedKB + ' kb');
+
+    renderAll();
+  });
+
+  el('deletePresetBtn').addEventListener('click', () => {
+    const name = presetSelect.value;
+    if(!name) return;
+    if(!confirm(`Delete preset "${name}"?`)) return;
+    savePresetsList(loadPresets().filter(p => p.name !== name));
+    refreshPresetSelect('');
+  });
+
+  refreshPresetSelect();
+
+  // @@ANCHOR[js-crop-tool] ---------- crop tool ----------
+  const cropModal = el('cropModal');
+  const cropStage = el('cropStage');
+  const cropImg = el('cropImg');
+  const cropBox = el('cropBox');
+  const openCropBtn = el('openCropBtn');
+  const cropRatioToggle = el('cropRatioToggle');
+
+  const cropState = { scale:1, dispW:0, dispH:0, ratio:1, locked:true, box:{left:0,top:0,w:0,h:0} };
+  let cropDragMode = null;
+  let cropDragStart = null;
+
+  const CROP_HANDLES = {
+    se: { anchorX:'left', anchorY:'top',    signX:1,  signY:1  },
+    nw: { anchorX:'right',anchorY:'bottom', signX:-1, signY:-1 },
+    ne: { anchorX:'left', anchorY:'bottom', signX:1,  signY:-1 },
+    sw: { anchorX:'right',anchorY:'top',    signX:-1, signY:1  }
+  };
+
+  function clampNum(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  function setCropBox(left, top, w, h){
+    cropState.box = { left, top, w, h };
+    cropBox.style.left = left+'px';
+    cropBox.style.top = top+'px';
+    cropBox.style.width = w+'px';
+    cropBox.style.height = h+'px';
+  }
+
+  function openCropModal(){
+    if(!state.img) return;
+    const src = state.workCanvas;
+    const ratio = (parseFloat(widthInput.value)||1) / (parseFloat(heightInput.value)||1) || 1;
+
+    cropImg.onload = () => {
+      const maxW = Math.min(320, window.innerWidth - 64);
+      const maxH = Math.min(420, window.innerHeight * 0.55);
+      const fitScale = Math.min(maxW/src.width, maxH/src.height, 1);
+      const dispW = src.width * fitScale;
+      const dispH = src.height * fitScale;
+
+      cropStage.style.width = dispW+'px';
+      cropStage.style.height = dispH+'px';
+
+      cropState.scale = src.width / dispW; // display px -> source px
+      cropState.dispW = dispW;
+      cropState.dispH = dispH;
+      cropState.ratio = ratio;
+      cropState.locked = true;
+      cropRatioToggle.textContent = 'locked to ratio';
+      cropRatioToggle.classList.remove('on');
+
+      let boxW, boxH, left, top;
+      const r = state.cropRect;
+      if(r && r.w > 0 && r.h > 0){
+        const cx = (r.x + r.w/2) / cropState.scale;
+        const cy = (r.y + r.h/2) / cropState.scale;
+        // start from the previous crop size (re-fit to the current ratio), re-centered
+        boxW = Math.min(r.w/cropState.scale, dispW);
+        boxH = boxW/ratio;
+        if(boxH > dispH){ boxH = dispH; boxW = boxH*ratio; }
+        left = cx - boxW/2;
+        top = cy - boxH/2;
+      } else {
+        boxW = dispW; boxH = boxW/ratio;
+        if(boxH > dispH){ boxH = dispH; boxW = boxH*ratio; }
+        left = (dispW-boxW)/2;
+        top = (dispH-boxH)/2;
+      }
+      left = clampNum(left, 0, dispW-boxW);
+      top = clampNum(top, 0, dispH-boxH);
+
+      setCropBox(left, top, boxW, boxH);
+      cropModal.style.display = 'flex';
+    };
+    cropImg.src = src.toDataURL(state.bgRemoved ? 'image/png' : 'image/jpeg', 0.92);
+  }
+
+  function closeCropModal(){
+    cropModal.style.display = 'none';
+    cropDragMode = null;
+    cropDragStart = null;
+  }
+
+  function onCropPointerDown(e, mode){
+    e.preventDefault();
+    cropDragMode = mode;
+    cropDragStart = { x: e.clientX, y: e.clientY, box: { ...cropState.box } };
+  }
+
+  function onCropPointerMove(e){
+    if(!cropDragMode) return;
+    const dx = e.clientX - cropDragStart.x;
+    const dy = e.clientY - cropDragStart.y;
+    const { dispW, dispH, ratio } = cropState;
+    const start = cropDragStart.box;
+
+    if(cropDragMode === 'move'){
+      const left = clampNum(start.left+dx, 0, dispW-start.w);
+      const top = clampNum(start.top+dy, 0, dispH-start.h);
+      setCropBox(left, top, start.w, start.h);
+      return;
+    }
+
+    const cfg = CROP_HANDLES[cropDragMode];
+    if(!cfg) return;
+    const minSize = 24;
+    const anchorX = cfg.anchorX === 'left' ? start.left : start.left+start.w;
+    const anchorY = cfg.anchorY === 'top' ? start.top : start.top+start.h;
+    const maxW = cfg.anchorX === 'left' ? (dispW-anchorX) : anchorX;
+    const maxH = cfg.anchorY === 'top' ? (dispH-anchorY) : anchorY;
+
+    let newW, newH;
+    if(cropState.locked){
+      newW = clampNum(start.w + cfg.signX*dx, minSize, maxW);
+      newH = newW/ratio;
+      if(newH > maxH){ newH = maxH; newW = newH*ratio; }
+    } else {
+      newW = clampNum(start.w + cfg.signX*dx, minSize, maxW);
+      newH = clampNum(start.h + cfg.signY*dy, minSize, maxH);
+    }
+
+    const left = cfg.anchorX === 'left' ? anchorX : anchorX-newW;
+    const top = cfg.anchorY === 'top' ? anchorY : anchorY-newH;
+    setCropBox(left, top, newW, newH);
+  }
+
+  function onCropPointerUp(){
+    cropDragMode = null;
+    cropDragStart = null;
+  }
+
+  function refitBoxToRatio(){
+    const { dispW, dispH, ratio, box } = cropState;
+    const cx = box.left + box.w/2;
+    const cy = box.top + box.h/2;
+    let newW = Math.min(box.w, dispW);
+    let newH = newW/ratio;
+    if(newH > dispH){ newH = dispH; newW = newH*ratio; }
+    if(newH > box.h){ newH = box.h; newW = newH*ratio; }
+    const left = clampNum(cx-newW/2, 0, dispW-newW);
+    const top = clampNum(cy-newH/2, 0, dispH-newH);
+    setCropBox(left, top, newW, newH);
+  }
+
+  cropRatioToggle.addEventListener('click', () => {
+    cropState.locked = !cropState.locked;
+    cropRatioToggle.textContent = cropState.locked ? 'locked to ratio' : 'free crop';
+    cropRatioToggle.classList.toggle('on', !cropState.locked);
+    if(cropState.locked) refitBoxToRatio();
+  });
+
+  cropBox.addEventListener('pointerdown', e => {
+    if(e.target.classList.contains('crop-handle')) return;
+    onCropPointerDown(e, 'move');
+  });
+  cropBox.querySelectorAll('.crop-handle').forEach(h => {
+    h.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      onCropPointerDown(e, h.dataset.handle);
+    });
+  });
+  window.addEventListener('pointermove', onCropPointerMove);
+  window.addEventListener('pointerup', onCropPointerUp);
+  window.addEventListener('pointercancel', onCropPointerUp);
+
+  openCropBtn.addEventListener('click', openCropModal);
+  el('cropCancelBtn').addEventListener('click', closeCropModal);
+
+  el('cropResetBtn').addEventListener('click', () => {
+    state.cropRect = null;
+    openCropBtn.textContent = 'Crop photo';
+    closeCropModal();
+    renderAll();
+  });
+
+  el('cropApplyBtn').addEventListener('click', () => {
+    const { scale, box } = cropState;
+    state.cropRect = {
+      x: Math.round(box.left*scale),
+      y: Math.round(box.top*scale),
+      w: Math.round(box.w*scale),
+      h: Math.round(box.h*scale)
+    };
+    openCropBtn.textContent = 'Recrop';
+    closeCropModal();
+    renderAll();
+  });
+
+  // @@ANCHOR[js-units-and-crop-rect] ---------- unit conversion ----------
+  const MM_PER = { mm:1, cm:10, in:25.4 };
+  function toMM(value, unit, dpi){
+    if(unit === 'px') return value * 25.4 / dpi;
+    return value * MM_PER[unit];
+  }
+
+  function getPhotoBoxMM(){
+    const unit = unitSelect.value;
+    const dpi = parseFloat(el('dpi').value) || 300;
+    const wMM = toMM(parseFloat(widthInput.value)||1, unit, dpi);
+    const hMM = toMM(parseFloat(heightInput.value)||1, unit, dpi);
+    const borderPx = parseFloat(el('borderWidth').value) || 0;
+    const borderColor = el('borderColor').value;
+    const borderMM = borderColor === 'none' ? 0 : (borderPx * 25.4 / dpi);
+    return { wMM, hMM, borderMM, dpi, borderColor };
+  }
+
+  function getCropRect(p){
+    const c = p.workCanvas;
+    const r = p.cropRect;
+    if(r && r.w > 0 && r.h > 0){
+      return {
+        x: Math.max(0, Math.min(r.x, c.width-1)),
+        y: Math.max(0, Math.min(r.y, c.height-1)),
+        w: Math.min(r.w, c.width),
+        h: Math.min(r.h, c.height)
+      };
+    }
+    return { x:0, y:0, w:c.width, h:c.height };
+  }
+
+  // build a bordered, compressed working image, return {canvas, dataUrl, quality}
+  // @@ANCHOR[js-build-edited-photo] p = a photo from photos[] (default: selected).
+  // encode=false skips JPEG/PNG encoding (used for the A4 preview of other photos).
+  function buildEditedPhoto(p, encode){
+    p = p || activePhoto();
+    if(!p) return null;
+    if(encode === undefined) encode = true;
+    const { wMM, hMM, borderMM, dpi, borderColor } = getPhotoBoxMM();
+    const pxPerMM = dpi / 25.4;
+    const innerW = Math.max(1, Math.round(wMM * pxPerMM));
+    const innerH = Math.max(1, Math.round(hMM * pxPerMM));
+    const borderPx = Math.round(borderMM * pxPerMM);
+
+    const totalW = innerW + borderPx*2;
+    const totalH = innerH + borderPx*2;
+
+    const out = document.createElement('canvas');
+    out.width = totalW; out.height = totalH;
+    const ctx = out.getContext('2d');
+
+    // Paint the selected background behind the photo.
+    // With transparent selected, the canvas stays transparent.
+    if(state.backgroundColor){
+      ctx.fillStyle = state.backgroundColor;
+      ctx.fillRect(0, 0, totalW, totalH);
+    }
+
+    // cover-fit crop of source (working canvas, possibly bg-removed, possibly
+    // manually cropped) into inner box
+    const src = p.workCanvas;
+    const crop = getCropRect(p);
+    const srcRatio = crop.w/crop.h;
+    const dstRatio = innerW/innerH;
+    let sx,sy,sw,sh;
+    if(srcRatio > dstRatio){
+      sh = crop.h; sw = sh*dstRatio;
+      sx = crop.x + (crop.w-sw)/2; sy = crop.y;
+    } else {
+      sw = crop.w; sh = sw/dstRatio;
+      sx = crop.x; sy = crop.y + (crop.h-sh)/2;
+    }
+    if(hasAdjust(p.adjust)){
+      // draw to a temp canvas, adjust the pixels, then place it (alpha preserved)
+      const tmp = document.createElement('canvas');
+      tmp.width = innerW; tmp.height = innerH;
+      tmp.getContext('2d').drawImage(src, sx,sy,sw,sh, 0, 0, innerW, innerH);
+      applyAdjustments(tmp, p.adjust);
+      ctx.drawImage(tmp, borderPx, borderPx);
+    } else {
+      ctx.drawImage(src, sx,sy,sw,sh, borderPx, borderPx, innerW, innerH);
+    }
+
+    // Draw a plain rectangular frame at the outer edge of the canvas.
+    // This is the same whether or not background removal is on: the frame
+    // sits on top of the background fill (or transparency) and around the
+    // photo, so it stays visible instead of trying to hug the subject's
+    // silhouette (which never reached the canvas edge and got hidden once a
+    // background color was filled behind it).
+    if(borderColor !== 'none' && borderPx > 0){
+      ctx.fillStyle = borderColor;
+      ctx.fillRect(0, 0, totalW, borderPx);
+      ctx.fillRect(0, totalH - borderPx, totalW, borderPx);
+      ctx.fillRect(0, borderPx, borderPx, totalH - borderPx*2);
+      ctx.fillRect(totalW - borderPx, borderPx, borderPx, totalH - borderPx*2);
+    }
+
+    // compression pass (JPEG quality search against target KB), only if no transparency needed
+    let dataUrl = null;
+    const format = p.bgRemoved ? 'image/png' : 'image/jpeg';
+    if(encode){
+      const targetKB = parseInt(compressSlider.value,10);
+      if(p.bgRemoved){
+        dataUrl = out.toDataURL('image/png'); // keep transparency, no lossy compress search
+      } else if(targetKB >= 500){
+        dataUrl = out.toDataURL('image/jpeg', 0.92);
+      } else {
+        let lo=0.1, hi=0.95, best=out.toDataURL('image/jpeg',0.5);
+        for(let i=0;i<8;i++){
+          const mid=(lo+hi)/2;
+          const candidate = out.toDataURL('image/jpeg', mid);
+          const kb = (candidate.length*0.75)/1024;
+          if(kb > targetKB){ hi = mid; } else { lo = mid; best = candidate; }
+        }
+        dataUrl = best;
+      }
+    }
+    return { canvas: out, dataUrl, format, wMM: wMM+borderMM*2, hMM: hMM+borderMM*2, photo: p };
+  }
+
+  // @@ANCHOR[js-photo-preview] ---------- render single preview ----------
+  function renderPhotoPreview(edited){
+    const ctx = photoCanvas.getContext('2d');
+    const maxDim = 260;
+    const scale = Math.min(maxDim/edited.canvas.width, maxDim/edited.canvas.height);
+    photoCanvas.width = edited.canvas.width*scale;
+    photoCanvas.height = edited.canvas.height*scale;
+    ctx.clearRect(0,0,photoCanvas.width,photoCanvas.height);
+    ctx.drawImage(edited.canvas,0,0,photoCanvas.width,photoCanvas.height);
+
+    const approxKB = Math.round((edited.dataUrl.length*0.75)/1024);
+    photoCap.textContent = `${edited.wMM.toFixed(1)} × ${edited.hMM.toFixed(1)} mm · ~${approxKB} kb`;
+  }
+
+  // @@ANCHOR[js-a4-layout] multi-photo, multi-page A4 layout
+  const A4_W = 210, A4_H = 297, MARGIN = 6;
+
+  // list of photos in print order, each repeated by its own "copies"
+  function buildSlots(){
+    const slots = [];
+    photos.forEach(p => { for(let i=0; i<p.copies; i++) slots.push(p); });
+    return slots;
+  }
+
+  function computeLayout(boxWMM, boxHMM, total){
+    const gap = parseFloat(el('gap').value)||0;
+    const availW = A4_W - MARGIN*2;
+    const availH = A4_H - MARGIN*2;
+    const cols = Math.max(1, Math.floor((availW + gap) / (boxWMM + gap)));
+    const rows = Math.max(1, Math.floor((availH + gap) / (boxHMM + gap)));
+    const perPage = cols*rows;
+    const pages = Math.max(1, Math.ceil(total / perPage));
+    return { gap, cols, rows, perPage, pages, total, availW, availH };
+  }
+
+  // calls cb(indexOnPage, xMM, yMM) for each photo position on ONE page
+  function forEachPosition(count, layout, wMM, hMM, align, cb){
+    let placed = 0;
+    for(let r=0; r<layout.rows && placed<count; r++){
+      const inRow = Math.min(layout.cols, count - placed);
+      const rowWidthMM = inRow*wMM + (inRow-1)*layout.gap;
+      let startX;
+      if(align === 'left') startX = MARGIN;
+      else if(align === 'right') startX = MARGIN + (layout.availW - rowWidthMM);
+      else startX = MARGIN + (layout.availW - rowWidthMM)/2;
+      const y = MARGIN + r*(hMM + layout.gap);
+      for(let c=0; c<inRow; c++){
+        cb(placed, startX + c*(wMM + layout.gap), y);
+        placed++;
+      }
+    }
+  }
+
+  function renderA4(selectedEdited){
+    const slots = buildSlots();
+    const wMM = selectedEdited.wMM, hMM = selectedEdited.hMM;
+    const layout = computeLayout(wMM, hMM, slots.length);
+    const align = el('align').value;
+
+    // one edited canvas per photo (no encoding needed for the preview)
+    const editedById = new Map();
+    photos.forEach(p => {
+      editedById.set(p.id, p === selectedEdited.photo ? selectedEdited : buildEditedPhoto(p, false));
+    });
+
+    const scale = 340 / A4_H;
+    a4pages.innerHTML = '';
+    for(let pg=0; pg<layout.pages; pg++){
+      const canvas = document.createElement('canvas');
+      canvas.className = 'a4page';
+      canvas.width = A4_W*scale;
+      canvas.height = A4_H*scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.strokeStyle = '#ccc';
+      ctx.strokeRect(0.5,0.5,canvas.width-1,canvas.height-1);
+
+      const pageSlots = slots.slice(pg*layout.perPage, (pg+1)*layout.perPage);
+      forEachPosition(pageSlots.length, layout, wMM, hMM, align, (idx, xMM, yMM) => {
+        const e = editedById.get(pageSlots[idx].id);
+        ctx.drawImage(e.canvas, xMM*scale, yMM*scale, wMM*scale, hMM*scale);
+      });
+      a4pages.appendChild(canvas);
+    }
+
+    el('fitInfo').textContent =
+      `${slots.length} photo${slots.length===1?'':'s'} on ${layout.pages} page${layout.pages===1?'':'s'} · ${layout.cols}×${layout.rows} per page`;
+    el('warnInfo').textContent =
+      (wMM > layout.availW || hMM > layout.availH)
+        ? 'photo is larger than the A4 printable area'
+        : '';
+  }
+
+  // @@ANCHOR[js-render-all] master render
+  let lastEdited = null;
+  function renderAll(){
+    const p = activePhoto();
+    if(!p) return;
+    lastEdited = buildEditedPhoto(p, true);
+    renderPhotoPreview(lastEdited);
+    renderA4(lastEdited);
+  }
+
+  // @@ANCHOR[js-bulk-zip] ---------- bulk compress & zip ----------
+  const bulkToggleBtn = el('bulkToggleBtn');
+  const bulkPanel = el('bulkPanel');
+  const bulkDropZone = el('bulkDropZone');
+  const bulkFileInput = el('bulkFileInput');
+  const bulkCountEl = el('bulkCount');
+  const bulkCompressSlider = el('bulkCompress');
+  const bulkCompressLabel = el('bulkCompressLabel');
+  const bulkZipBtn = el('bulkZipBtn');
+  const bulkProgressEl = el('bulkProgress');
+
+  let bulkFiles = [];
+
+  bulkToggleBtn.addEventListener('click', () => {
+    const isOpen = bulkPanel.style.display !== 'none';
+    bulkPanel.style.display = isOpen ? 'none' : 'block';
+    bulkToggleBtn.textContent = isOpen
+      ? '📦 Bulk compress photos & download ZIP'
+      : 'Hide bulk compress panel';
+  });
+
+  bulkFileInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files.length) addBulkFiles(e.target.files);
+    bulkFileInput.value = ''; // allow re-selecting the same files later
+  });
+
+  const bulkFolderBtn = el('bulkFolderBtn');
+  const bulkFolderInput = el('bulkFolderInput');
+  bulkFolderBtn.addEventListener('click', () => bulkFolderInput.click());
+  bulkFolderInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files.length) addBulkFiles(e.target.files);
+    bulkFolderInput.value = '';
+  });
+  ['dragover','dragenter'].forEach(ev => bulkDropZone.addEventListener(ev, e=>{e.preventDefault();bulkDropZone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev => bulkDropZone.addEventListener(ev, e=>{e.preventDefault();bulkDropZone.classList.remove('drag');}));
+  bulkDropZone.addEventListener('drop', e=>{
+    if(e.dataTransfer.files && e.dataTransfer.files.length) addBulkFiles(e.dataTransfer.files);
+  });
+
+  // Browser/Android MIME types are not always reliable for folder uploads.
+  function isSupportedImageFile(file){
+    const type = String(file.type || '').toLowerCase();
+    if(type.startsWith('image/')) return true;
+    return /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif|tiff?)$/i.test(file.name || '');
+  }
+
+  let bulkImportStats = { found:0, accepted:0, duplicates:0, skipped:0 };
+
+  function updateBulkCount(){
+    if(!bulkImportStats.found){
+      bulkCountEl.textContent = 'No photos loaded yet.';
+      return;
+    }
+
+    const parts = [
+      `${bulkFiles.length} photos loaded`,
+      `${bulkImportStats.found} files found`
+    ];
+
+    if(bulkImportStats.duplicates){
+      parts.push(
+        `${bulkImportStats.duplicates} duplicate${bulkImportStats.duplicates === 1 ? '' : 's'} ignored`
+      );
+    }
+
+    if(bulkImportStats.skipped){
+      parts.push(
+        `${bulkImportStats.skipped} non-image${bulkImportStats.skipped === 1 ? '' : 's'} skipped`
+      );
+    }
+
+    bulkCountEl.textContent = parts.join(' · ') + ' — ready to compress.';
+  }
+
+  function addBulkFiles(fileList){
+    const incoming = Array.from(fileList || []);
+    bulkImportStats.found += incoming.length;
+
+    const seen = new Set(
+      bulkFiles.map(f => f.name + '|' + f.size + '|' + f.lastModified)
+    );
+
+    let acceptedNow = 0;
+    let duplicateNow = 0;
+    let skippedNow = 0;
+
+    for(const file of incoming){
+      if(!isSupportedImageFile(file)){
+        skippedNow++;
+        continue;
+      }
+
+      const key = file.name + '|' + file.size + '|' + file.lastModified;
+
+      if(seen.has(key)){
+        duplicateNow++;
+        continue;
+      }
+
+      seen.add(key);
+      bulkFiles.push(file);
+      acceptedNow++;
+    }
+
+    bulkImportStats.accepted += acceptedNow;
+    bulkImportStats.duplicates += duplicateNow;
+    bulkImportStats.skipped += skippedNow;
+
+    updateBulkCount();
+    bulkZipBtn.disabled = bulkFiles.length === 0;
+
+    bulkProgressEl.textContent =
+      `Added ${acceptedNow} image${acceptedNow === 1 ? '' : 's'} · ` +
+      `${duplicateNow} duplicate${duplicateNow === 1 ? '' : 's'} · ` +
+      `${skippedNow} non-image${skippedNow === 1 ? '' : 's'} skipped.`;
+  }
+
+  bulkCompressSlider.addEventListener('input', () => {
+    bulkCompressLabel.textContent = bulkCompressSlider.value + ' kb';
+  });
+
+  // Load one file onto a canvas, then binary-search JPEG quality.
+  function compressFileToTargetKB(file, targetKB){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+
+      const cleanup = () => URL.revokeObjectURL(url);
+
+      img.onload = async () => {
+        try{
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+
+          const ctx = canvas.getContext('2d');
+          if(!ctx) throw new Error('Canvas is not available.');
+
+          ctx.drawImage(img, 0, 0);
+          cleanup();
+
+          const toBlob = q => new Promise((res, rej) => {
+            canvas.toBlob(blob => {
+              if(blob) res(blob);
+              else rej(new Error('Browser could not encode ' + file.name));
+            }, 'image/jpeg', q);
+          });
+
+          let lo = 0.1;
+          let hi = 0.95;
+          let best = await toBlob(0.9);
+
+          const minimum = await toBlob(lo);
+          if(minimum.size <= targetKB * 1024) best = minimum;
+
+          for(let i=0; i<8; i++){
+            const mid = (lo + hi) / 2;
+            const blob = await toBlob(mid);
+
+            if(blob.size / 1024 > targetKB){
+              hi = mid;
+            }else{
+              lo = mid;
+              best = blob;
+            }
+          }
+
+          resolve(best);
+        }catch(err){
+          cleanup();
+          reject(err);
+        }
+      };
+
+      img.onerror = () => {
+        cleanup();
+        reject(new Error(
+          `Browser could not decode "${file.name}". The format may not be supported.`
+        ));
+      };
+
+      img.src = url;
+    });
+  }
+
+  bulkZipBtn.addEventListener('click', async () => {
+    if(!bulkFiles.length || !window.JSZip) return;
+
+    bulkZipBtn.disabled = true;
+    bulkToggleBtn.disabled = true;
+
+    const targetKB = parseInt(bulkCompressSlider.value, 10);
+    const zip = new JSZip();
+    const usedNames = new Set();
+
+    let successCount = 0;
+    let failedCount = 0;
+    const failedFiles = [];
+
+    for(let i=0; i<bulkFiles.length; i++){
+      const file = bulkFiles[i];
+
+      bulkProgressEl.textContent =
+        `Compressing ${i + 1} of ${bulkFiles.length} — ${file.name}`;
+
+      try{
+        const blob = await compressFileToTargetKB(file, targetKB);
+
+        if(!blob || !blob.size){
+          throw new Error('Compression returned an empty file.');
+        }
+
+        const base =
+          file.name.replace(/\.[^.]+$/, '') || `photo-${i + 1}`;
+
+        let name = base + '.jpg';
+        let n = 1;
+
+        while(usedNames.has(name)){
+          name = `${base}-${n++}.jpg`;
+        }
+
+        usedNames.add(name);
+        zip.file(name, blob);
+        successCount++;
+      }catch(err){
+        failedCount++;
+        failedFiles.push(file.name);
+        console.error('Could not compress:', file.name, err);
+      }
+
+      // Yield to the browser so large batches remain responsive.
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    if(successCount === 0){
+      bulkProgressEl.textContent =
+        `No files could be compressed. ${failedCount} failed.`;
+
+      bulkZipBtn.disabled = false;
+      bulkToggleBtn.disabled = false;
+      return;
+    }
+
+    try{
+      bulkProgressEl.textContent =
+        `Building ZIP… ${successCount} compressed, ${failedCount} failed.`;
+
+      const content = await zip.generateAsync(
+        {type:'blob'},
+        meta => {
+          bulkProgressEl.textContent =
+            `Building ZIP… ${Math.round(meta.percent)}% · ` +
+            `${successCount} compressed, ${failedCount} failed`;
+        }
+      );
+
+      // Verify that the ZIP contains exactly the number of successful outputs.
+      const zipEntries = Object.keys(zip.files)
+        .filter(name => !zip.files[name].dir);
+
+      if(zipEntries.length !== successCount){
+        throw new Error(
+          `ZIP verification failed: expected ${successCount} files, ` +
+          `found ${zipEntries.length}.`
+        );
+      }
+
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'compressed-photos.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      bulkProgressEl.textContent =
+        `Done — ${successCount} of ${bulkFiles.length} photos compressed ` +
+        `and verified in ZIP${failedCount ? ` · ${failedCount} failed` : ''}.`;
+
+      if(failedFiles.length){
+        console.warn('Files that could not be compressed:', failedFiles);
+      }
+    }catch(err){
+      console.error('ZIP creation/verification failed:', err);
+      bulkProgressEl.textContent =
+        `ZIP creation failed: ${err.message || 'Unknown error'}.`;
+    }finally{
+      bulkZipBtn.disabled = bulkFiles.length === 0;
+      bulkToggleBtn.disabled = false;
+    }
+  });
+
+  // @@ANCHOR[js-pdf-to-images] ---------- pdf to images, compress & zip ----------
+  if(window.pdfjsLib){
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  const pdfToggleBtn = el('pdfToggleBtn');
+  const pdfPanel = el('pdfPanel');
+  const pdfDropZone = el('pdfDropZone');
+  const pdfFileInput = el('pdfFileInput');
+  const pdfCountEl = el('pdfCount');
+  const pdfScaleSlider = el('pdfScale');
+  const pdfScaleLabel = el('pdfScaleLabel');
+  const pdfCompressSlider = el('pdfCompress');
+  const pdfCompressLabel = el('pdfCompressLabel');
+  const pdfZipBtn = el('pdfZipBtn');
+  const pdfProgressEl = el('pdfProgress');
+
+  let pdfSelectedFile = null;
+
+  pdfToggleBtn.addEventListener('click', () => {
+    const isOpen = pdfPanel.style.display !== 'none';
+    pdfPanel.style.display = isOpen ? 'none' : 'block';
+    pdfToggleBtn.textContent = isOpen
+      ? '📄 PDF to images & download ZIP'
+      : 'Hide PDF-to-images panel';
+  });
+
+  pdfScaleSlider.addEventListener('input', () => {
+    pdfScaleLabel.textContent = pdfScaleSlider.value + '×';
+  });
+  pdfCompressSlider.addEventListener('input', () => {
+    pdfCompressLabel.textContent = pdfCompressSlider.value + ' kb';
+  });
+
+  function isSupportedPdfFile(file){
+    if(!file) return false;
+    const type = String(file.type || '').toLowerCase();
+    if(type === 'application/pdf') return true;
+    return /\.pdf$/i.test(file.name || '');
+  }
+
+  function setPdfFile(file){
+    if(!isSupportedPdfFile(file)){
+      pdfCountEl.textContent = 'That file is not a PDF — please choose a .pdf file.';
+      pdfSelectedFile = null;
+      pdfZipBtn.disabled = true;
+      return;
+    }
+    pdfSelectedFile = file;
+    const kb = (file.size / 1024).toFixed(0);
+    pdfCountEl.textContent = `${file.name} loaded (${kb} kb) — ready to convert.`;
+    pdfZipBtn.disabled = false;
+    pdfProgressEl.textContent = '';
+  }
+
+  pdfFileInput.addEventListener('change', e => {
+    if(e.target.files && e.target.files[0]) setPdfFile(e.target.files[0]);
+    pdfFileInput.value = '';
+  });
+
+  ['dragover','dragenter'].forEach(ev => pdfDropZone.addEventListener(ev, e=>{e.preventDefault();pdfDropZone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev => pdfDropZone.addEventListener(ev, e=>{e.preventDefault();pdfDropZone.classList.remove('drag');}));
+  pdfDropZone.addEventListener('drop', e=>{
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(file) setPdfFile(file);
+  });
+
+  // Binary-search JPEG quality on an already-rendered canvas to hit a target size.
+  function compressCanvasToTargetKB(canvas, targetKB){
+    return new Promise((resolve, reject) => {
+      const toBlob = q => new Promise((res, rej) => {
+        canvas.toBlob(blob => {
+          if(blob) res(blob);
+          else rej(new Error('Browser could not encode this page.'));
+        }, 'image/jpeg', q);
+      });
+
+      (async () => {
+        try{
+          let lo = 0.1;
+          let hi = 0.95;
+          let best = await toBlob(0.9);
+
+          const minimum = await toBlob(lo);
+          if(minimum.size <= targetKB * 1024) best = minimum;
+
+          for(let i=0; i<8; i++){
+            const mid = (lo + hi) / 2;
+            const blob = await toBlob(mid);
+
+            if(blob.size / 1024 > targetKB){
+              hi = mid;
+            }else{
+              lo = mid;
+              best = blob;
+            }
+          }
+
+          resolve(best);
+        }catch(err){
+          reject(err);
+        }
+      })();
+    });
+  }
+
+  pdfZipBtn.addEventListener('click', async () => {
+    if(!pdfSelectedFile || !window.JSZip || !window.pdfjsLib) return;
+
+    pdfZipBtn.disabled = true;
+    pdfToggleBtn.disabled = true;
+
+    const targetKB = parseInt(pdfCompressSlider.value, 10);
+    const scale = parseFloat(pdfScaleSlider.value);
+    const zip = new JSZip();
+
+    let successCount = 0;
+    let failedCount = 0;
+    const failedPages = [];
+
+    try{
+      pdfProgressEl.textContent = 'Reading PDF…';
+      const arrayBuffer = await pdfSelectedFile.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pageCount = pdfDoc.numPages;
+      const padWidth = String(pageCount).length;
+
+      for(let pageNum = 1; pageNum <= pageCount; pageNum++){
+        pdfProgressEl.textContent = `Rendering & compressing page ${pageNum} of ${pageCount}…`;
+
+        try{
+          const page = await pdfDoc.getPage(pageNum);
+          const viewport = page.getViewport({ scale });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const ctx = canvas.getContext('2d');
+          if(!ctx) throw new Error('Canvas is not available.');
+
+          // PDF pages can have transparent backgrounds; fill white so JPEG output looks right.
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          await page.render({ canvasContext: ctx, viewport }).promise;
+
+          const blob = await compressCanvasToTargetKB(canvas, targetKB);
+          if(!blob || !blob.size) throw new Error('Compression returned an empty file.');
+
+          const name = `page-${String(pageNum).padStart(padWidth, '0')}.jpg`;
+          zip.file(name, blob);
+          successCount++;
+        }catch(err){
+          failedCount++;
+          failedPages.push(pageNum);
+          console.error('Could not convert page', pageNum, err);
+        }
+
+        // Yield to the browser so large PDFs remain responsive.
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }catch(err){
+      console.error('PDF read failed:', err);
+      pdfProgressEl.textContent = `Could not read PDF: ${err.message || 'Unknown error'}.`;
+      pdfZipBtn.disabled = false;
+      pdfToggleBtn.disabled = false;
+      return;
+    }
+
+    if(successCount === 0){
+      pdfProgressEl.textContent = `No pages could be converted. ${failedCount} failed.`;
+      pdfZipBtn.disabled = false;
+      pdfToggleBtn.disabled = false;
+      return;
+    }
+
+    try{
+      pdfProgressEl.textContent =
+        `Building ZIP… ${successCount} converted, ${failedCount} failed.`;
+
+      const content = await zip.generateAsync(
+        {type:'blob'},
+        meta => {
+          pdfProgressEl.textContent =
+            `Building ZIP… ${Math.round(meta.percent)}% · ` +
+            `${successCount} converted, ${failedCount} failed`;
+        }
+      );
+
+      const zipEntries = Object.keys(zip.files)
+        .filter(name => !zip.files[name].dir);
+
+      if(zipEntries.length !== successCount){
+        throw new Error(
+          `ZIP verification failed: expected ${successCount} files, ` +
+          `found ${zipEntries.length}.`
+        );
+      }
+
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      const base = (pdfSelectedFile.name || 'pdf').replace(/\.[^.]+$/, '');
+      a.download = `${base}-pages.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      pdfProgressEl.textContent =
+        `Done — ${successCount} of ${successCount + failedCount} pages converted ` +
+        `and verified in ZIP${failedCount ? ` · pages failed: ${failedPages.join(', ')}` : ''}.`;
+    }catch(err){
+      console.error('ZIP creation/verification failed:', err);
+      pdfProgressEl.textContent = `ZIP creation failed: ${err.message || 'Unknown error'}.`;
+    }finally{
+      pdfZipBtn.disabled = !pdfSelectedFile;
+      pdfToggleBtn.disabled = false;
+    }
+  });
+
+  // @@ANCHOR[js-downloads] downloads
+  function baseName(p, i){
+    return (p.name || ('photo-' + (i+1))).replace(/\.[^.]+$/, '') || ('photo-' + (i+1));
+  }
+
+  // @@ANCHOR[js-download-selected] download the selected photo
+  el('downloadPhoto').addEventListener('click', () => {
+    const p = activePhoto();
+    if(!lastEdited || !p) return;
+    const a = document.createElement('a');
+    a.href = lastEdited.dataUrl;
+    a.download = baseName(p, activeIdx) + (p.bgRemoved ? '-edited.png' : '-edited.jpg');
+    a.click();
+  });
+
+  // @@ANCHOR[js-download-all-zip] download every edited photo as a ZIP
+  el('downloadAllZip').addEventListener('click', async () => {
+    if(!photos.length || !window.JSZip) return;
+    const btn = el('downloadAllZip');
+    const label = btn.textContent;
+    btn.disabled = true;
+    try{
+      const zip = new JSZip();
+      const used = new Set();
+      for(let i=0; i<photos.length; i++){
+        btn.textContent = `Preparing ${i+1} of ${photos.length}…`;
+        await new Promise(r => setTimeout(r, 0)); // let the UI update
+        const p = photos[i];
+        const e = buildEditedPhoto(p, true);
+        const ext = p.bgRemoved ? '.png' : '.jpg';
+        let name = baseName(p, i) + '-edited' + ext, n = 1;
+        while(used.has(name)){ n++; name = baseName(p, i) + '-edited-' + n + ext; }
+        used.add(name);
+        zip.file(name, e.dataUrl.split(',')[1], { base64: true });
+      }
+      btn.textContent = 'Building ZIP…';
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'passport-photos.zip';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch(err){
+      console.error('ZIP failed:', err);
+      alert('Could not build the ZIP. Please try again.');
+    } finally {
+      btn.textContent = label;
+      btn.disabled = false;
+    }
+  });
+
+  // @@ANCHOR[js-download-pdf] A4 PDF with all photos, as many pages as needed
+  el('downloadPdf').addEventListener('click', () => {
+    if(!lastEdited || !photos.length) return;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:'mm', format:'a4' });
+    const slots = buildSlots();
+    const wMM = lastEdited.wMM, hMM = lastEdited.hMM;
+    const layout = computeLayout(wMM, hMM, slots.length);
+    const align = el('align').value;
+
+    const editedById = new Map();
+    photos.forEach(p => editedById.set(p.id, buildEditedPhoto(p, true)));
+
+    for(let pg=0; pg<layout.pages; pg++){
+      if(pg > 0) doc.addPage();
+      const pageSlots = slots.slice(pg*layout.perPage, (pg+1)*layout.perPage);
+      forEachPosition(pageSlots.length, layout, wMM, hMM, align, (idx, x, y) => {
+        const p = pageSlots[idx];
+        const e = editedById.get(p.id);
+        // alias lets jsPDF embed each photo once, even with many copies
+        doc.addImage(e.dataUrl, e.format === 'image/png' ? 'PNG' : 'JPEG', x, y, wMM, hMM, 'photo' + p.id);
+      });
+    }
+    doc.save('print-sheet-a4.pdf');
+  });
+
+})();
+</script>
+</body>
+</html>
